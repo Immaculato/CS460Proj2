@@ -18,25 +18,21 @@ class KNearestNeighbor:
     testIndexes = dict()
 
     #initialization takes a filename.
-    def __init__(self, trainingFilename, testFilename, debug):
+    def __init__(self, trainingFilename, debug):
         self.debug = debug
         file = None
         try:
             fileTraining = open(trainingFilename, "r")
-            fileTest = open(testFilename, "r")
         except:
-            print('one or more files not found')
+            print('training file not found')
             exit -1
         
         #get all the ratings for each user.
-        movieRatings = list()
         for line in fileTraining:
             parsedLine = line.split('\t')
             #mark the distinct movie indexes and user indexes.
             self.users.add(int(parsedLine[0]))
             self.movieIndexes.add(int(parsedLine[1]))
-            #save each movie rating with the respective user. we'll use this to rebuild each user's vector.
-            #movieRatings.append((int(parsedLine[0]), int(parsedLine[1]), int(parsedLine[2])))
             #if we don't already have the user in the dictionary, initialize their entry.
             if int(parsedLine[0]) not in self.userRatings:
                 self.userRatings[int(parsedLine[0])] = dict()
@@ -45,40 +41,72 @@ class KNearestNeighbor:
 
         #go back through and add default values for each missing movie, noting the missing movies. we'll use these to test the algorithm's predictions.
         for user in self.users:
-            for i in self.movieIndexes:
+            for i in range(1, max(self.movieIndexes)+1):
                 if i not in self.userRatings[user]:
                     self.userRatings[user][i] = 2.5
                     self.testIndexes[user] = i
+                #looks like there's a chance that a movie index doesn't appear in the training data. add it in.
+                if i not in self.movieIndexes:
+                    self.movieIndexes.add(i)
 
-        self.__kNearestNeighbors(1, 3)
+        #print self.userRatings[405]
+
+        #print 'euclidean distance test', self.__euclideanDistance__((1, 1, 1), (1, 1, 1))
+        #self.__kNearestNeighbors(1, 3, [1])
 
 
-    def __euclideanDistance__(self, vector1, vector2):
-        tot = 0.0
+    def __cosineSimilarity__(self, vector1, vector2):
+        topDotProduct = 0.0
+        vector1SquaredSum = 0.0
+        vector2SquaredSum = 0.0
+        #tot = 0.0
         for i in self.movieIndexes:
-            tot += (vector1[i] - vector2[i])**2
-        tot = tot**0.5
-        return tot
+            topDotProduct += vector1[i]*vector2[i]
+            vector1SquaredSum += vector1[i]**2
+            vector2SquaredSum += vector2[i]**2
+            #tot += (vector1[i] - vector2[i])**2
+        return topDotProduct / (((vector1SquaredSum) ** 0.5) * ((vector2SquaredSum) ** 0.5))
 
 
-    def __kNearestNeighbors(self, userIndex, k):
+    #using the index of the user to predict for and k neighbors, predict ratings for each movieIndex.
+    #returns a list of floats that correspond to rating predictions for each movie index given.
+    def kNearestNeighborsPrediction(self, userIndex, k, movieIndexes):
         #find the euclidean distance for each other user to the current user.
         otherUserDistances = dict()
         #for each other user,
         for user in self.users:
             if user != userIndex:
-                #find the distance from that user to the current user.
-                otherUserDistances[user] = self.__euclideanDistance__(self.userRatings[userIndex], self.userRatings[user])
+                #find the cosine similarity from that user to the current user.
+                otherUserDistances[user] = self.__cosineSimilarity__(self.userRatings[userIndex], self.userRatings[user])
 
         #now, find the k nearest neighbors
         kNearestNeighborsIndexes = list()
+        neighborsSimilarities = dict()
         for i in range(k):
             minUserIndex = min(otherUserDistances, key=otherUserDistances.get)
-            print min(otherUserDistances)
+            #print 'min distance',otherUserDistances[minUserIndex]
             kNearestNeighborsIndexes.append(minUserIndex)
-            print minUserIndex
+            neighborsSimilarities[minUserIndex] = otherUserDistances[minUserIndex]
+            #print 'min index',minUserIndex
             #take out the min user so we don't add them multiple times.
             del otherUserDistances[minUserIndex]
+
+        #print kNearestNeighborsIndexes
+        #use the k nearest neighbors to make a prediction for the given movie indexes.
+        numerator = 0.0
+        denominator = 0.0
+        movieRatingPredictions = list()
+        for movie in movieIndexes:
+            for i in kNearestNeighborsIndexes:
+                #print 'movie', movie, 'i', i
+                #print 'similarity', neighborsSimilarities[i]
+                #print 'user rating', self.userRatings[i][movie]
+                numerator += neighborsSimilarities[i]*self.userRatings[i][movie]
+                denominator += neighborsSimilarities[i]
+            movieRatingPredictions.append(numerator/denominator)
+
+        #print 'ratings', movieRatingPredictions
+        return movieRatingPredictions
 
 
 
@@ -91,7 +119,29 @@ def main():
         exit(-1)
     trainingFilename = sys.argv[1]
     testFilename = sys.argv[2]
-    debug = True
-    kNeighbor = KNearestNeighbor(trainingFilename, testFilename, debug)
+    kNeighbor = KNearestNeighbor(trainingFilename, debug=True)
+    testFile = None
+    try:
+        testFile = open(testFilename, "r")
+    except:
+        print('test file not found')
+        exit -1
+    testRatings = dict()
+    for line in testFile:
+        parsedLine = line.split('\t')
+        #if we don't already have the user in the dictionary, initialize their entry with a list of movies to rate.
+        if int(parsedLine[0]) not in testRatings:
+            testRatings[int(parsedLine[0])] = list()
+        #for each user, add the indexes of the movies they need predicted.
+        testRatings[int(parsedLine[0])].append(int(parsedLine[1]))
+
+    #now, predict the ratings for each user.
+    testUserPredictions = dict()
+    for user in testRatings:
+        #print 'user', user, 'movies', testRatings[user]
+        prediction = kNeighbor.kNearestNeighborsPrediction(user, 3, testRatings[user])
+        testUserPredictions[user] = prediction
+        print 'finished user', user
+
 
 main()

@@ -2,6 +2,8 @@
 #Assignment: Project 1 - cS460G Machine Learning, Dr. Harrison
 #https://stackoverflow.com/questions/3282823/get-the-key-corresponding-to-the-minimum-value-within-a-dictionary -
 #used to find corresponding key to min value in a dictionary
+#https://stackoverflow.com/questions/26584003/output-to-the-same-line-overwriting-previous
+#used to print progress
 
 import math
 import sys
@@ -15,20 +17,11 @@ class KNearestNeighbor:
     users = set()
     movieRatings = list()
     userRatings = dict()
-    testIndexes = dict()
 
     #initialization takes a filename.
-    def __init__(self, trainingFilename, debug):
-        self.debug = debug
-        file = None
-        try:
-            fileTraining = open(trainingFilename, "r")
-        except:
-            print('training file not found')
-            exit -1
-        
+    def __init__(self, fileContents, debug):
         #get all the ratings for each user.
-        for line in fileTraining:
+        for line in fileContents:
             parsedLine = line.split('\t')
             #mark the distinct movie indexes and user indexes.
             self.users.add(int(parsedLine[0]))
@@ -39,12 +32,11 @@ class KNearestNeighbor:
             #for each user, add an entry for the movie, and their rating.
             self.userRatings[int(parsedLine[0])][int(parsedLine[1])] = float(parsedLine[2])
 
-        #go back through and add default values for each missing movie, noting the missing movies. we'll use these to test the algorithm's predictions.
+        #go back through and add default values for each missing movie
         for user in self.users:
             for i in range(1, max(self.movieIndexes)+1):
                 if i not in self.userRatings[user]:
                     self.userRatings[user][i] = 2.5
-                    self.testIndexes[user] = i
                 #looks like there's a chance that a movie index doesn't appear in the training data. add it in.
                 if i not in self.movieIndexes:
                     self.movieIndexes.add(i)
@@ -54,17 +46,18 @@ class KNearestNeighbor:
         #print 'euclidean distance test', self.__euclideanDistance__((1, 1, 1), (1, 1, 1))
         #self.__kNearestNeighbors(1, 3, [1])
 
-
     def __cosineSimilarity__(self, vector1, vector2):
         topDotProduct = 0.0
         vector1SquaredSum = 0.0
         vector2SquaredSum = 0.0
         #tot = 0.0
         for i in self.movieIndexes:
+            #print vector1[i],'*',vector2[i]
             topDotProduct += vector1[i]*vector2[i]
             vector1SquaredSum += vector1[i]**2
             vector2SquaredSum += vector2[i]**2
             #tot += (vector1[i] - vector2[i])**2
+        #print topDotProduct
         return topDotProduct / (((vector1SquaredSum) ** 0.5) * ((vector2SquaredSum) ** 0.5))
 
 
@@ -78,6 +71,7 @@ class KNearestNeighbor:
             if user != userIndex:
                 #find the cosine similarity from that user to the current user.
                 otherUserDistances[user] = self.__cosineSimilarity__(self.userRatings[userIndex], self.userRatings[user])
+                #print 'cosine similarity to user', user, otherUserDistances[user]
 
         #now, find the k nearest neighbors
         kNearestNeighborsIndexes = list()
@@ -108,10 +102,9 @@ class KNearestNeighbor:
         #print 'ratings', movieRatingPredictions
         return movieRatingPredictions
 
-
-
-
-
+#cross validate with the given k values. this will print the average mean squared error for each k value, and return the best k.
+def crossValidate(fileContents, kValues, folds):
+    return 'implement'
 
 def main():
     if (len(sys.argv) != 3):
@@ -119,7 +112,23 @@ def main():
         exit(-1)
     trainingFilename = sys.argv[1]
     testFilename = sys.argv[2]
-    kNeighbor = KNearestNeighbor(trainingFilename, debug=True)
+    kValues = {1, 3, 5, 7, 9}
+
+    #try to open the training file, and populate the array of lines.
+    fileContents = list()
+    try:
+        fileTraining = open(trainingFilename, "r")
+        for line in fileTraining:
+            fileContents.append(line)
+    except:
+        print('training file not found')
+        exit -1
+    
+    kNeighbor = KNearestNeighbor(fileContents, debug=True)
+
+    #time to cross validate.
+
+    #open the testfile, and read the entries we need to test.
     testFile = None
     try:
         testFile = open(testFilename, "r")
@@ -127,6 +136,8 @@ def main():
         print('test file not found')
         exit -1
     testRatings = dict()
+    actualRatings = list()
+    #for each line
     for line in testFile:
         parsedLine = line.split('\t')
         #if we don't already have the user in the dictionary, initialize their entry with a list of movies to rate.
@@ -134,14 +145,29 @@ def main():
             testRatings[int(parsedLine[0])] = list()
         #for each user, add the indexes of the movies they need predicted.
         testRatings[int(parsedLine[0])].append(int(parsedLine[1]))
+        #keep the actual ratings for each user as well.
+        actualRatings.append(float(parsedLine[2]))
 
-    #now, predict the ratings for each user.
-    testUserPredictions = dict()
+    #now, predict the ratings for each user, and find the mean squared error.
+    meanSquaredError = 0.0
+    index = 0
+    iteration = 0
+    numUsers = float(len(testRatings))
     for user in testRatings:
-        #print 'user', user, 'movies', testRatings[user]
         prediction = kNeighbor.kNearestNeighborsPrediction(user, 3, testRatings[user])
-        testUserPredictions[user] = prediction
-        print 'finished user', user
+        #print prediction
+        for i in range(len(prediction)):
+            #print 'difference of', prediction[i], '-', actualRatings[index], '=', prediction[i] - actualRatings[index]
+            meanSquaredError += (prediction[i] - actualRatings[index]) ** 2
+            index+=1
+        iteration+=1
+        percentDone = round((float(iteration)/numUsers) * 100, 2)
+        sys.stdout.write('Finished user: [%.2f%%]\r'%percentDone)
+        sys.stdout.flush()
+
+    meanSquaredError = meanSquaredError/len(actualRatings)
+    print ''
+    print 'Mean Squared Error:', meanSquaredError
 
 
 main()

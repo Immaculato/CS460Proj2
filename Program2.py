@@ -43,16 +43,10 @@ class KNearestNeighbor:
                 if i not in self.movieIndexes:
                     self.movieIndexes.add(i)
 
-        #print self.userRatings[405]
-
-        #print 'euclidean distance test', self.__euclideanDistance__((1, 1, 1), (1, 1, 1))
-        #self.__kNearestNeighbors(1, 3, [1])
-
     #cross validate with the given k values. this will print the average mean squared error for each k value, and return the best k.
     def crossValidate(self, kValues, folds):
 
         fileContents = copy.deepcopy(self.fileContents)
-        #test = KNearestNeighbor(fileContents, False)
         foldList = list()
         elementsPerBin = len(fileContents) // folds
         print('Partitioning folds for cross validation...')
@@ -63,7 +57,6 @@ class KNearestNeighbor:
                 indexAdd = random.choice(range(len(fileContents)))
                 foldList[i].append(fileContents[indexAdd])
                 del fileContents[indexAdd]
-            #print 'bin', i, len(foldList[i])
 
         print('Beginning cross validation...')
         #start testing out each k.
@@ -101,9 +94,8 @@ class KNearestNeighbor:
                 numUsers = float(len(testRatings))
                 for user in testRatings:
                     prediction = currentFold.kNearestNeighborsPrediction(user, k, testRatings[user])
-                    #print prediction
                     for j in range(len(prediction)):
-                        #print 'difference of', prediction[i], '-', actualRatings[index], '=', prediction[i] - actualRatings[index]
+                        #add up the mean squared error
                         meanSquaredError += (prediction[j] - actualRatings[index]) ** 2
                         index+=1
                     iteration+=1
@@ -127,14 +119,11 @@ class KNearestNeighbor:
         topDotProduct = 0.0
         vector1SquaredSum = 0.0
         vector2SquaredSum = 0.0
-        #tot = 0.0
         for i in self.movieIndexes:
-            #print vector1[i],'*',vector2[i]
             topDotProduct += vector1[i]*vector2[i]
             vector1SquaredSum += vector1[i]**2
             vector2SquaredSum += vector2[i]**2
-            #tot += (vector1[i] - vector2[i])**2
-        #print topDotProduct
+
         return topDotProduct / (((vector1SquaredSum) ** 0.5) * ((vector2SquaredSum) ** 0.5))
 
 
@@ -154,38 +143,35 @@ class KNearestNeighbor:
         kNearestNeighborsIndexes = list()
         neighborsSimilarities = dict()
         for i in range(k):
+            #find the index of the closest neighbor
             minUserIndex = min(otherUserDistances, key=otherUserDistances.get)
-            #print 'min distance',otherUserDistances[minUserIndex]
             kNearestNeighborsIndexes.append(minUserIndex)
             neighborsSimilarities[minUserIndex] = otherUserDistances[minUserIndex]
-            #print 'min index',minUserIndex
             #take out the min user so we don't add them multiple times.
             del otherUserDistances[minUserIndex]
 
-        #print kNearestNeighborsIndexes
         #use the k nearest neighbors to make a prediction for the given movie indexes.
         numerator = 0.0
         denominator = 0.0
         movieRatingPredictions = list()
         for movie in movieIndexes:
             for i in kNearestNeighborsIndexes:
-                #print 'movie', movie, 'i', i
-                #print 'similarity', neighborsSimilarities[i]
-                #print 'user rating', self.userRatings[i][movie]
                 numerator += neighborsSimilarities[i]*self.userRatings[i][movie]
                 denominator += neighborsSimilarities[i]
             movieRatingPredictions.append(numerator/denominator)
 
-        #print 'ratings', movieRatingPredictions
         return movieRatingPredictions
 
 def main():
-    if (len(sys.argv) != 3):
-        print "Takes 2 command line arguments: the name of the training file, and the test file."
+    if (len(sys.argv) < 3 or len(sys.argv) > 4):
+        print "Takes at least 2 command line arguments: the name of the training file, the test file, and optionally, the -cv flag to cross validate."
         exit(-1)
     trainingFilename = sys.argv[1]
     testFilename = sys.argv[2]
     kValues = [1, 3, 5, 7, 9]
+    crossValidate = False
+    if '-cv' in sys.argv:
+        crossValidate = True
 
     #try to open the training file, and populate the array of lines.
     fileContents = list()
@@ -200,10 +186,11 @@ def main():
     print('Initializing training file...')
     kNeighbor = KNearestNeighbor(fileContents, debug=True)
     
-    #time to cross validate.
-    numFolds = 4
-    k = kNeighbor.crossValidate(kValues, numFolds)
-    #k = 3
+    #time to cross validate, if they said to. otherwise, default to k=3.
+    k = 3
+    if crossValidate:
+        numFolds = 4
+        k = kNeighbor.crossValidate(kValues, numFolds)
 
     #open the testfile, and read the entries we need to test.
     testFile = None
@@ -232,9 +219,7 @@ def main():
     numUsers = float(len(testRatings))
     for user in testRatings:
         prediction = kNeighbor.kNearestNeighborsPrediction(user, k, testRatings[user])
-        #print prediction
         for i in range(len(prediction)):
-            #print 'difference of', prediction[i], '-', actualRatings[index], '=', prediction[i] - actualRatings[index]
             meanSquaredError += (prediction[i] - actualRatings[index]) ** 2
             index+=1
         iteration+=1
